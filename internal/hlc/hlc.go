@@ -151,3 +151,21 @@ func (c *Clock) Receive(remote Timestamp) Timestamp {
 
 	return c.last
 }
+
+// Last returns the most recent timestamp held by the clock.
+func (c *Clock) Last() Timestamp {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.last
+}
+
+// Seed advances the clock's state to at least ts.
+// If ts is before or equal to the clock's current state, Seed is a no-op.
+// This is typically called during crash recovery to restore persisted clock state.
+func (c *Clock) Seed(ts Timestamp) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ts.After(c.last) {
+		c.last = ts
+	}
+}

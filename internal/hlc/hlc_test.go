@@ -676,3 +676,37 @@ func TestScenario_ThreeNodeConvergence(t *testing.T) {
 		}
 	}
 }
+
+func TestClock_LastAndSeed(t *testing.T) {
+	phys := NewManualClock(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	c := NewClock(phys)
+
+	if got := c.Last(); got != (Timestamp{}) {
+		t.Fatalf("expected zero timestamp initially, got %v", got)
+	}
+
+	ts1 := c.Now()
+	if got := c.Last(); got != ts1 {
+		t.Fatalf("expected Last to return %v, got %v", ts1, got)
+	}
+
+	// Seed with an older timestamp should be a no-op
+	older := Timestamp{WallTime: ts1.WallTime - 1000, Counter: 0}
+	c.Seed(older)
+	if got := c.Last(); got != ts1 {
+		t.Fatalf("expected Seed with older timestamp to be no-op, got %v", got)
+	}
+
+	// Seed with a newer timestamp should advance Last
+	future := Timestamp{WallTime: ts1.WallTime + 5000, Counter: 42}
+	c.Seed(future)
+	if got := c.Last(); got != future {
+		t.Fatalf("expected Last to match seeded future timestamp, got %v", got)
+	}
+
+	// Next Now() should advance beyond the seeded timestamp even if physical clock is behind
+	next := c.Now()
+	if !next.After(future) {
+		t.Fatalf("expected next timestamp %v to be after seeded future timestamp %v", next, future)
+	}
+}

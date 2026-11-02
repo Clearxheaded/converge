@@ -192,6 +192,43 @@ func (m *LWWMap) Apply(incoming Record) bool {
 	return false
 }
 
+// SetRecord directly inserts or overwrites a record without altering the clock.
+// This is used by storage engines where transactional persistence and clock
+// progression are managed externally.
+func (m *LWWMap) SetRecord(rec Record) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.records[rec.Key] = rec
+}
+
+// ApplyRecord merges a single record without advancing the clock.
+// Returns true if the incoming record won under LWW total ordering.
+func (m *LWWMap) ApplyRecord(incoming Record) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	existing, exists := m.records[incoming.Key]
+	if !exists || CompareRecords(incoming, existing) > 0 {
+		m.records[incoming.Key] = incoming
+		return true
+	}
+	return false
+}
+
+// LoadRecords populates the map from a slice of records, keeping the winning
+// record for each key, without advancing the clock. This is used during crash recovery.
+func (m *LWWMap) LoadRecords(records []Record) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, rec := range records {
+		existing, exists := m.records[rec.Key]
+		if !exists || CompareRecords(rec, existing) > 0 {
+			m.records[rec.Key] = rec
+		}
+	}
+}
+
 // Merge incorporates all records from another LWWMap into this map.
 // Snapshots the remote records first to prevent nested locking and deadlocks.
 // Returns the number of keys updated.

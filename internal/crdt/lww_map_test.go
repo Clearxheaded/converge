@@ -755,3 +755,64 @@ func TestRecord_JSONSerialization(t *testing.T) {
 	}
 }
 
+func TestCRDT_SetRecordApplyRecordAndLoadRecords(t *testing.T) {
+	m := NewLWWMap("node-1", nil)
+
+	rec1 := Record{
+		Key:       "k1",
+		Value:     "v1",
+		Timestamp: hlc.Timestamp{WallTime: 100, Counter: 0},
+		ReplicaID: "node-1",
+	}
+	m.SetRecord(rec1)
+
+	got, ok := m.Get("k1")
+	if !ok || got != "v1" {
+		t.Fatalf("expected v1, got %v (ok=%v)", got, ok)
+	}
+
+	// Apply older record should fail
+	older := Record{
+		Key:       "k1",
+		Value:     "v0",
+		Timestamp: hlc.Timestamp{WallTime: 50, Counter: 0},
+		ReplicaID: "node-2",
+	}
+	if m.ApplyRecord(older) {
+		t.Fatalf("older record should not have applied")
+	}
+
+	// Apply newer record should succeed
+	newer := Record{
+		Key:       "k1",
+		Value:     "v2",
+		Timestamp: hlc.Timestamp{WallTime: 200, Counter: 0},
+		ReplicaID: "node-2",
+	}
+	if !m.ApplyRecord(newer) {
+		t.Fatalf("newer record should have applied")
+	}
+	if val, _ := m.Get("k1"); val != "v2" {
+		t.Fatalf("expected v2, got %v", val)
+	}
+
+	// LoadRecords batch load
+	m2 := NewLWWMap("node-2", nil)
+	batch := []Record{
+		{Key: "a", Value: "val-a", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 0}, ReplicaID: "node-1"},
+		{Key: "b", Value: "val-b", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 0}, ReplicaID: "node-1"},
+		{Key: "a", Value: "val-a-newer", Timestamp: hlc.Timestamp{WallTime: 150, Counter: 0}, ReplicaID: "node-2"},
+	}
+	m2.LoadRecords(batch)
+
+	if m2.Len() != 2 {
+		t.Fatalf("expected 2 active records, got %d", m2.Len())
+	}
+	if val, _ := m2.Get("a"); val != "val-a-newer" {
+		t.Fatalf("expected val-a-newer, got %s", val)
+	}
+	if val, _ := m2.Get("b"); val != "val-b" {
+		t.Fatalf("expected val-b, got %s", val)
+	}
+}
+
