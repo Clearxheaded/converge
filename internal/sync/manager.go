@@ -168,6 +168,35 @@ func (m *SyncManager) Broadcast(msg *protocol.Message) {
 	}
 }
 
+// BroadcastExcept sends a replication message to all active, handshaked peers except the specified replica ID.
+func (m *SyncManager) BroadcastExcept(exceptReplicaID string, msg *protocol.Message) {
+	peers := m.Peers()
+	for _, p := range peers {
+		if p.RemoteID() != exceptReplicaID {
+			_ = p.Send(msg)
+		}
+	}
+}
+
+// Sync sends a SyncRequest to the specified peer using the current watermark.
+func (m *SyncManager) Sync(peerID string) error {
+	p, ok := m.Peer(peerID)
+	if !ok {
+		return fmt.Errorf("sync: peer %s not found or not handshaked", peerID)
+	}
+	watermark := m.GetWatermark(peerID)
+	return p.Send(protocol.NewSyncRequest(watermark))
+}
+
+// SyncAll sends a SyncRequest to all handshaked peers.
+func (m *SyncManager) SyncAll() {
+	peers := m.Peers()
+	for _, p := range peers {
+		watermark := m.GetWatermark(p.RemoteID())
+		_ = p.Send(protocol.NewSyncRequest(watermark))
+	}
+}
+
 // Close gracefully shuts down the sync manager, unregisters from storage,
 // and terminates all active peer sessions.
 func (m *SyncManager) Close() error {

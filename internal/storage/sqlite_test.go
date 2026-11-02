@@ -254,8 +254,8 @@ func TestStorage_MergeRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MergeRecords failed: %v", err)
 	}
-	if updated != 2 {
-		t.Fatalf("expected 2 keys updated (key2 and key3), got %d", updated)
+	if len(updated) != 2 {
+		t.Fatalf("expected 2 keys updated (key2 and key3), got %d", len(updated))
 	}
 
 	// Verify key1 retained local value

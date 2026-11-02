@@ -292,10 +292,10 @@ ON CONFLICT(replica_id) DO UPDATE SET
 // MergeRecords merges a batch of incoming records transactionally.
 // It advances the local clock past all incoming timestamps, identifies records that win
 // under CRDT total ordering, commits winners and the advanced clock state to SQLite,
-// and updates the in-memory map. Returns the number of winning records applied.
-func (s *Storage) MergeRecords(records []crdt.Record) (int, error) {
+// and updates the in-memory map. Returns the slice of winning records applied.
+func (s *Storage) MergeRecords(records []crdt.Record) ([]crdt.Record, error) {
 	if len(records) == 0 {
-		return 0, nil
+		return nil, nil
 	}
 
 	s.writeMu.Lock()
@@ -328,7 +328,7 @@ func (s *Storage) MergeRecords(records []crdt.Record) (int, error) {
 	// 4. Execute transaction: persist winning records and updated clock state.
 	tx, err := s.db.Begin()
 	if err != nil {
-		return 0, fmt.Errorf("storage: begin transaction: %w", err)
+		return nil, fmt.Errorf("storage: begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -344,7 +344,7 @@ ON CONFLICT(key) DO UPDATE SET
     deleted = excluded.deleted;
 `)
 		if err != nil {
-			return 0, fmt.Errorf("storage: prepare upsert record: %w", err)
+			return nil, fmt.Errorf("storage: prepare upsert record: %w", err)
 		}
 		defer stmt.Close()
 
@@ -354,7 +354,7 @@ ON CONFLICT(key) DO UPDATE SET
 				delInt = 1
 			}
 			if _, err := stmt.Exec(rec.Key, rec.Value, int64(rec.Timestamp.WallTime), int64(rec.Timestamp.Counter), rec.ReplicaID, delInt); err != nil {
-				return 0, fmt.Errorf("storage: exec upsert record: %w", err)
+				return nil, fmt.Errorf("storage: exec upsert record: %w", err)
 			}
 		}
 	}
@@ -367,11 +367,11 @@ ON CONFLICT(replica_id) DO UPDATE SET
     counter = excluded.counter;
 `
 	if _, err := tx.Exec(upsertClock, s.replicaID, int64(latestClock.WallTime), int64(latestClock.Counter)); err != nil {
-		return 0, fmt.Errorf("storage: upsert clock: %w", err)
+		return nil, fmt.Errorf("storage: upsert clock: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("storage: commit transaction: %w", err)
+		return nil, fmt.Errorf("storage: commit transaction: %w", err)
 	}
 
 	// 5. Update in-memory state for winning records only.
@@ -383,7 +383,7 @@ ON CONFLICT(replica_id) DO UPDATE SET
 		s.notifyListeners(winning, true)
 	}
 
-	return len(winning), nil
+	return winning, nil
 }
 
 // Get returns the value of an active key and true, or empty string and false if absent or deleted.

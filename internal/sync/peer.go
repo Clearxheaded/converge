@@ -250,8 +250,14 @@ func (p *Peer) handleMessage(msg *protocol.Message) error {
 		}
 
 		if len(msg.SyncResponse.Records) > 0 {
-			if _, err := p.manager.store.MergeRecords(msg.SyncResponse.Records); err != nil {
+			winners, err := p.manager.store.MergeRecords(msg.SyncResponse.Records)
+			if err != nil {
 				return err
+			}
+
+			// Transitive gossip: relay winning records to other peers.
+			if len(winners) > 0 {
+				p.manager.BroadcastExcept(p.RemoteID(), protocol.NewUpdatePush(winners...))
 			}
 		}
 
@@ -271,7 +277,8 @@ func (p *Peer) handleMessage(msg *protocol.Message) error {
 		}
 
 		if len(msg.UpdatePush.Records) > 0 {
-			if _, err := p.manager.store.MergeRecords(msg.UpdatePush.Records); err != nil {
+			winners, err := p.manager.store.MergeRecords(msg.UpdatePush.Records)
+			if err != nil {
 				return err
 			}
 
@@ -282,6 +289,11 @@ func (p *Peer) handleMessage(msg *protocol.Message) error {
 				}
 			}
 			p.manager.SetWatermark(p.RemoteID(), maxTs)
+
+			// Transitive gossip: relay winning records to all other peers.
+			if len(winners) > 0 {
+				p.manager.BroadcastExcept(p.RemoteID(), protocol.NewUpdatePush(winners...))
+			}
 		}
 		return nil
 
