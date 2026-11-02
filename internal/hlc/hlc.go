@@ -24,11 +24,11 @@ func (WallClock) Now() time.Time { return time.Now() }
 // Compared lexicographically: WallTime first, then Counter.
 type Timestamp struct {
 	// WallTime is physical time in milliseconds since Unix epoch.
-	WallTime uint64
+	WallTime uint64 `json:"wall_time"`
 
 	// Counter breaks ties when multiple events share the same WallTime.
 	// Resets to 0 whenever WallTime advances.
-	Counter uint32
+	Counter uint32 `json:"counter"`
 }
 
 // Before reports whether ts is strictly before other.
@@ -47,6 +47,11 @@ func (ts Timestamp) After(other Timestamp) bool {
 // Equal reports whether ts and other represent the same timestamp.
 func (ts Timestamp) Equal(other Timestamp) bool {
 	return ts.WallTime == other.WallTime && ts.Counter == other.Counter
+}
+
+// IsZero reports whether the timestamp is the zero value.
+func (ts Timestamp) IsZero() bool {
+	return ts.WallTime == 0 && ts.Counter == 0
 }
 
 // Compare returns -1 if ts < other, 0 if ts == other, +1 if ts > other.

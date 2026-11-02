@@ -28,14 +28,21 @@ CREATE TABLE IF NOT EXISTS clock_state (
 );
 `
 
+// ChangeListener is called when records are committed to storage.
+// isRemote indicates whether the write originated from a remote peer merge.
+type ChangeListener func(records []crdt.Record, isRemote bool)
+
 // Storage provides durable, transactionally consistent SQLite persistence
 // for the LWW register map and Hybrid Logical Clock state.
 type Storage struct {
-	db        *sql.DB
-	replicaID string
-	clock     *hlc.Clock
-	memMap    *crdt.LWWMap
-	writeMu   sync.Mutex
+	db          *sql.DB
+	replicaID   string
+	clock       *hlc.Clock
+	memMap      *crdt.LWWMap
+	writeMu     sync.Mutex
+	subsMu      sync.RWMutex
+	subscribers map[uint64]ChangeListener
+	nextSubID   uint64
 }
 
 // Open opens an SQLite database at path, enables WAL mode, applies schema migrations,
@@ -134,10 +141,11 @@ func New(db *sql.DB, replicaID string, clock *hlc.Clock) (*Storage, error) {
 	memMap.LoadRecords(records)
 
 	return &Storage{
-		db:        db,
-		replicaID: replicaID,
-		clock:     clock,
-		memMap:    memMap,
+		db:          db,
+		replicaID:   replicaID,
+		clock:       clock,
+		memMap:      memMap,
+		subscribers: make(map[uint64]ChangeListener),
 	}, nil
 }
 
@@ -219,6 +227,7 @@ ON CONFLICT(replica_id) DO UPDATE SET
 	}
 
 	s.memMap.SetRecord(rec)
+	s.notifyListeners([]crdt.Record{rec}, false)
 	return rec, nil
 }
 
@@ -276,6 +285,7 @@ ON CONFLICT(replica_id) DO UPDATE SET
 	}
 
 	s.memMap.SetRecord(rec)
+	s.notifyListeners([]crdt.Record{rec}, false)
 	return rec, wasActive, nil
 }
 
@@ -369,6 +379,10 @@ ON CONFLICT(replica_id) DO UPDATE SET
 		s.memMap.SetRecord(rec)
 	}
 
+	if len(winning) > 0 {
+		s.notifyListeners(winning, true)
+	}
+
 	return len(winning), nil
 }
 
@@ -420,6 +434,56 @@ func (s *Storage) TombstoneCount() int {
 // RecordCount returns the total number of records, active and tombstones combined.
 func (s *Storage) RecordCount() int {
 	return s.memMap.RecordCount()
+}
+
+// Subscribe registers a callback invoked whenever records are committed to storage.
+// Returns an unsubscribe function.
+func (s *Storage) Subscribe(listener ChangeListener) func() {
+	s.subsMu.Lock()
+	defer s.subsMu.Unlock()
+	s.nextSubID++
+	id := s.nextSubID
+	s.subscribers[id] = listener
+
+	return func() {
+		s.subsMu.Lock()
+		defer s.subsMu.Unlock()
+		delete(s.subscribers, id)
+	}
+}
+
+func (s *Storage) notifyListeners(records []crdt.Record, isRemote bool) {
+	s.subsMu.RLock()
+	if len(s.subscribers) == 0 {
+		s.subsMu.RUnlock()
+		return
+	}
+	listeners := make([]ChangeListener, 0, len(s.subscribers))
+	for _, l := range s.subscribers {
+		listeners = append(listeners, l)
+	}
+	s.subsMu.RUnlock()
+
+	for _, l := range listeners {
+		l(records, isRemote)
+	}
+}
+
+// RecordsSince returns all records modified strictly after the given HLC timestamp.
+// If since is the zero timestamp, all records are returned.
+func (s *Storage) RecordsSince(since hlc.Timestamp) []crdt.Record {
+	all := s.memMap.AllRecords()
+	if since.IsZero() {
+		return all
+	}
+
+	var results []crdt.Record
+	for _, rec := range all {
+		if rec.Timestamp.After(since) {
+			results = append(results, rec)
+		}
+	}
+	return results
 }
 
 // LoadRecordsFromDB reads all records directly from the database table.
