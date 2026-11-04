@@ -206,4 +206,3 @@ func Decode(data []byte) (*Message, error) {
 	}
 	return &msg, nil
 }
-

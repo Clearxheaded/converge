@@ -345,4 +345,3 @@ func TestSimulation_AsymmetricCourierReplication(t *testing.T) {
 		t.Fatalf("courier C failed to receive from B: ok=%v, val=%s", ok, valC)
 	}
 }
-

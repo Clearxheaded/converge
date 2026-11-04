@@ -31,4 +31,3 @@ func FastConfig() Config {
 		MaxMessageSize: 512 * 1024,
 	}
 }
-

@@ -629,9 +629,9 @@ func TestScenario_ThreeNodeConvergence(t *testing.T) {
 	// Three nodes with different clock skews exchange messages.
 	base := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 
-	physA := NewManualClock(base)                               // on time
-	physB := NewManualClock(base.Add(500 * time.Millisecond))   // 500ms ahead
-	physC := NewManualClock(base.Add(-300 * time.Millisecond))  // 300ms behind
+	physA := NewManualClock(base)                              // on time
+	physB := NewManualClock(base.Add(500 * time.Millisecond))  // 500ms ahead
+	physC := NewManualClock(base.Add(-300 * time.Millisecond)) // 300ms behind
 
 	a := NewClock(physA)
 	b := NewClock(physB)

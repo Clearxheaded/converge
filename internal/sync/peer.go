@@ -56,6 +56,11 @@ func (p *Peer) RemoteID() string {
 	return p.remoteID
 }
 
+// IsOutbound returns whether this peer connection was initiated locally.
+func (p *Peer) IsOutbound() bool {
+	return p.isOutbound
+}
+
 func (p *Peer) setRemoteID(id string) {
 	p.mu.Lock()
 	p.remoteID = id
@@ -305,4 +310,3 @@ func (p *Peer) handleMessage(msg *protocol.Message) error {
 		return fmt.Errorf("unexpected message type: %s", msg.Type)
 	}
 }
-

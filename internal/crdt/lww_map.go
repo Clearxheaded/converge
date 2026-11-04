@@ -390,4 +390,3 @@ func (m *LWWMap) EqualState(other *LWWMap) bool {
 	}
 	return true
 }
-

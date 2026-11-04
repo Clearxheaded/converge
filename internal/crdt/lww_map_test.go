@@ -54,57 +54,57 @@ func TestCompareRecords_TimestampOrdering(t *testing.T) {
 		expected int
 	}{
 		{
-			name: "higher wall time wins",
-			a:    Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 200, Counter: 0}, ReplicaID: "node-1"},
-			b:    Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 0}, ReplicaID: "node-2"},
+			name:     "higher wall time wins",
+			a:        Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 200, Counter: 0}, ReplicaID: "node-1"},
+			b:        Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 0}, ReplicaID: "node-2"},
 			expected: 1,
 		},
 		{
-			name: "lower wall time loses",
-			a:    Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 0}, ReplicaID: "node-2"},
-			b:    Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 200, Counter: 0}, ReplicaID: "node-1"},
+			name:     "lower wall time loses",
+			a:        Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 0}, ReplicaID: "node-2"},
+			b:        Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 200, Counter: 0}, ReplicaID: "node-1"},
 			expected: -1,
 		},
 		{
-			name: "same wall time, higher counter wins",
-			a:    Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 5}, ReplicaID: "node-1"},
-			b:    Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 2}, ReplicaID: "node-2"},
+			name:     "same wall time, higher counter wins",
+			a:        Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 5}, ReplicaID: "node-1"},
+			b:        Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 2}, ReplicaID: "node-2"},
 			expected: 1,
 		},
 		{
-			name: "same wall time, lower counter loses",
-			a:    Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 2}, ReplicaID: "node-1"},
-			b:    Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 5}, ReplicaID: "node-2"},
+			name:     "same wall time, lower counter loses",
+			a:        Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 2}, ReplicaID: "node-1"},
+			b:        Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 5}, ReplicaID: "node-2"},
 			expected: -1,
 		},
 		{
-			name: "same timestamp, higher replica ID wins",
-			a:    Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-b"},
-			b:    Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a"},
+			name:     "same timestamp, higher replica ID wins",
+			a:        Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-b"},
+			b:        Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a"},
 			expected: 1,
 		},
 		{
-			name: "same timestamp, lower replica ID loses",
-			a:    Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a"},
-			b:    Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-b"},
+			name:     "same timestamp, lower replica ID loses",
+			a:        Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a"},
+			b:        Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-b"},
 			expected: -1,
 		},
 		{
-			name: "same timestamp and replica ID, delete wins over set",
-			a:    Record{Key: "k", Value: "", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: true},
-			b:    Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: false},
+			name:     "same timestamp and replica ID, delete wins over set",
+			a:        Record{Key: "k", Value: "", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: true},
+			b:        Record{Key: "k", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: false},
 			expected: 1,
 		},
 		{
-			name: "same timestamp and replica ID, set loses to delete",
-			a:    Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: false},
-			b:    Record{Key: "k", Value: "", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: true},
+			name:     "same timestamp and replica ID, set loses to delete",
+			a:        Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: false},
+			b:        Record{Key: "k", Value: "", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: true},
 			expected: -1,
 		},
 		{
-			name: "identical records tie",
-			a:    Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: false},
-			b:    Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: false},
+			name:     "identical records tie",
+			a:        Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: false},
+			b:        Record{Key: "k", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 1}, ReplicaID: "node-a", Deleted: false},
 			expected: 0,
 		},
 	}
@@ -815,4 +815,3 @@ func TestCRDT_SetRecordApplyRecordAndLoadRecords(t *testing.T) {
 		t.Fatalf("expected val-b, got %s", val)
 	}
 }
-

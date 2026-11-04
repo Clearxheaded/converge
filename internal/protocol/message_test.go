@@ -239,4 +239,3 @@ func TestProtocol_DecodeErrors(t *testing.T) {
 		t.Fatal("expected error encoding nil message, got nil")
 	}
 }
-

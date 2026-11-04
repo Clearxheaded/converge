@@ -3,6 +3,7 @@ package simulation
 import (
 	"fmt"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -30,6 +31,7 @@ type ClusterNode struct {
 // Cluster manages a set of interconnected ClusterNodes attached to a simulated Network.
 type Cluster struct {
 	t        *testing.T
+	tempDir  string
 	Network  *Network
 	nodes    map[string]*ClusterNode
 	nodeList []*ClusterNode
@@ -39,15 +41,29 @@ type Cluster struct {
 
 // NewCluster spins up an in-process cluster with independent SQLite stores and WebSocket endpoints.
 func NewCluster(t *testing.T, nodeIDs ...string) *Cluster {
+	tempDir := t.TempDir()
+	c, err := newClusterWithDir(tempDir, nodeIDs...)
+	if err != nil {
+		t.Fatalf("new cluster: %v", err)
+	}
+	c.t = t
+	return c
+}
+
+// NewStandaloneCluster creates a cluster outside the testing package
+// (for CLI demos, examples, and interactive simulations).
+func NewStandaloneCluster(baseDir string, nodeIDs ...string) (*Cluster, error) {
+	return newClusterWithDir(baseDir, nodeIDs...)
+}
+
+func newClusterWithDir(tempDir string, nodeIDs ...string) (*Cluster, error) {
 	net := NewNetwork()
 
 	c := &Cluster{
-		t:       t,
+		tempDir: tempDir,
 		Network: net,
 		nodes:   make(map[string]*ClusterNode),
 	}
-
-	tempDir := t.TempDir()
 
 	for _, id := range nodeIDs {
 		clock := hlc.NewClock(hlc.WallClock{})
@@ -55,7 +71,8 @@ func NewCluster(t *testing.T, nodeIDs ...string) *Cluster {
 
 		store, err := storage.Open(dbPath, id, clock)
 		if err != nil {
-			t.Fatalf("cluster: open storage for node %s: %v", id, err)
+			_ = c.Close()
+			return nil, fmt.Errorf("cluster: open storage for node %s: %w", id, err)
 		}
 
 		mgr := csync.NewManager(store, csync.FastConfig())
@@ -76,7 +93,7 @@ func NewCluster(t *testing.T, nodeIDs ...string) *Cluster {
 		c.nodeList = append(c.nodeList, node)
 	}
 
-	return c
+	return c, nil
 }
 
 // Node returns the ClusterNode with the specified replica ID.
@@ -172,22 +189,36 @@ func (c *Cluster) SyncAll() {
 	}
 }
 
-// AssertConverged polls the cluster until all nodes have converged to bit-for-bit identical
-// states in memory (values and tombstones) and in SQLite disk records, or fails the test.
-func (c *Cluster) AssertConverged(timeout time.Duration) {
-	c.t.Helper()
+// WaitForConvergence polls until all nodes have converged to bit-for-bit identical
+// states in memory and SQLite disk records, or returns an error on timeout.
+func (c *Cluster) WaitForConvergence(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var lastErr error
 
 	for time.Now().Before(deadline) {
 		lastErr = c.checkConvergence()
 		if lastErr == nil {
-			return
+			return nil
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
 
-	c.t.Fatalf("cluster failed to converge after %v: %v", timeout, lastErr)
+	return fmt.Errorf("failed to converge after %v: %w", timeout, lastErr)
+}
+
+// AssertConverged polls the cluster until all nodes have converged to bit-for-bit identical
+// states in memory (values and tombstones) and in SQLite disk records, or fails the test.
+func (c *Cluster) AssertConverged(timeout time.Duration) {
+	if c.t != nil {
+		c.t.Helper()
+	}
+	if err := c.WaitForConvergence(timeout); err != nil {
+		if c.t != nil {
+			c.t.Fatalf("cluster: %v", err)
+		} else {
+			panic(err)
+		}
+	}
 }
 
 func (c *Cluster) checkConvergence() error {
@@ -278,5 +309,10 @@ func (c *Cluster) Close() error {
 	}
 
 	_ = c.Network.Close()
+
+	if c.t == nil && c.tempDir != "" {
+		_ = os.RemoveAll(c.tempDir)
+	}
+
 	return nil
 }

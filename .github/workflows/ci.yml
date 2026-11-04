@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test & Verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libsqlite3-dev
+
+      - name: Check Code Formatting
+        run: |
+          unformatted=$(gofmt -l cmd internal)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: Run Tests
+        env:
+          CGO_ENABLED: '1'
+        run: go test -v ./...
+
+      - name: Run Race Detector
+        env:
+          CGO_ENABLED: '1'
+        run: go test -v -race ./...
+
+      - name: Run Benchmarks Smoke Test
+        env:
+          CGO_ENABLED: '1'
+        run: go test -v -run='^$' -bench='.' -benchtime='50ms' ./...
+
+      - name: Build Converge CLI
+        env:
+          CGO_ENABLED: '1'
+        run: go build -v -o bin/converge ./cmd/converge

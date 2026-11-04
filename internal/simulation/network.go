@@ -398,4 +398,3 @@ func (n *Network) Close() error {
 	n.server.Close()
 	return nil
 }
-

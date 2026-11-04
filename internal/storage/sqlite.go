@@ -525,4 +525,3 @@ func (s *Storage) LoadClockFromDB() (hlc.Timestamp, error) {
 	}
 	return hlc.Timestamp{WallTime: uint64(wt), Counter: uint32(cnt)}, nil
 }
-

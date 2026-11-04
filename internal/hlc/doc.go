@@ -8,4 +8,3 @@
 //
 // The clock is safe for concurrent use by multiple goroutines.
 package hlc
-
