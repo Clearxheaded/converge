@@ -491,3 +491,87 @@ func TestStorage_TransactionalAtomicity(t *testing.T) {
 		t.Fatalf("expected rolled back key to not exist in database, count=%d", count)
 	}
 }
+
+func TestStorage_Compact(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "compact_test.db")
+	phys := newManualClock(baseTime())
+	clock := hlc.NewClock(phys)
+
+	s, err := Open(dbPath, "node-compact", clock)
+	if err != nil {
+		t.Fatalf("failed to open storage: %v", err)
+	}
+	defer s.Close()
+
+	// Write 2 active keys
+	_, _ = s.Set("active1", "val1")
+	_, _ = s.Set("active2", "val2")
+
+	// Delete key 1 (creates tombstone)
+	phys.Advance(10 * time.Millisecond)
+	delRec1, _, err := s.Delete("active1")
+	if err != nil {
+		t.Fatalf("Delete active1 failed: %v", err)
+	}
+
+	// Advance time and write another key, then delete it
+	phys.Advance(50 * time.Millisecond)
+	_, _ = s.Set("active3", "val3")
+	phys.Advance(10 * time.Millisecond)
+	delRec2, _, err := s.Delete("active3")
+	if err != nil {
+		t.Fatalf("Delete active3 failed: %v", err)
+	}
+
+	if s.TombstoneCount() != 2 {
+		t.Fatalf("expected 2 tombstones, got %d", s.TombstoneCount())
+	}
+
+	// Compact up to delRec1.Timestamp: should purge only active1's tombstone
+	pruned, err := s.Compact(delRec1.Timestamp)
+	if err != nil {
+		t.Fatalf("Compact failed: %v", err)
+	}
+	if pruned != 1 {
+		t.Fatalf("expected 1 tombstone purged, got %d", pruned)
+	}
+	if s.TombstoneCount() != 1 {
+		t.Fatalf("expected 1 tombstone in memory, got %d", s.TombstoneCount())
+	}
+
+	// Check DB records table directly
+	dbRecords, err := s.LoadRecordsFromDB()
+	if err != nil {
+		t.Fatalf("failed to load records from DB: %v", err)
+	}
+	if len(dbRecords) != 2 { // active2 (active) and active3 (tombstone)
+		t.Fatalf("expected 2 DB records after first compact, got %d", len(dbRecords))
+	}
+
+	// Active key must still exist
+	val, ok := s.Get("active2")
+	if !ok || val != "val2" {
+		t.Fatalf("expected active2 to remain intact, got ok=%v val=%v", ok, val)
+	}
+
+	// Compact up to delRec2.Timestamp: should purge active3's tombstone
+	pruned2, err := s.Compact(delRec2.Timestamp)
+	if err != nil {
+		t.Fatalf("Compact failed: %v", err)
+	}
+	if pruned2 != 1 {
+		t.Fatalf("expected 1 tombstone purged, got %d", pruned2)
+	}
+	if s.TombstoneCount() != 0 {
+		t.Fatalf("expected 0 tombstones in memory, got %d", s.TombstoneCount())
+	}
+
+	// Check DB records table again
+	dbRecords2, err := s.LoadRecordsFromDB()
+	if err != nil {
+		t.Fatalf("failed to load records from DB: %v", err)
+	}
+	if len(dbRecords2) != 1 { // only active2 remains
+		t.Fatalf("expected 1 DB record after second compact, got %d", len(dbRecords2))
+	}
+}

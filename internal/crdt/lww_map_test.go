@@ -815,3 +815,49 @@ func TestCRDT_SetRecordApplyRecordAndLoadRecords(t *testing.T) {
 		t.Fatalf("expected val-b, got %s", val)
 	}
 }
+
+func TestCRDT_PruneTombstones(t *testing.T) {
+	m := NewLWWMap("node-1", nil)
+
+	// Add 2 active records and 2 tombstones
+	m.ApplyRecord(Record{Key: "active1", Value: "v1", Timestamp: hlc.Timestamp{WallTime: 50, Counter: 0}, ReplicaID: "node-1", Deleted: false})
+	m.ApplyRecord(Record{Key: "tomb1", Value: "", Timestamp: hlc.Timestamp{WallTime: 100, Counter: 0}, ReplicaID: "node-1", Deleted: true})
+	m.ApplyRecord(Record{Key: "tomb2", Value: "", Timestamp: hlc.Timestamp{WallTime: 200, Counter: 0}, ReplicaID: "node-1", Deleted: true})
+	m.ApplyRecord(Record{Key: "active2", Value: "v2", Timestamp: hlc.Timestamp{WallTime: 250, Counter: 0}, ReplicaID: "node-1", Deleted: false})
+
+	if m.TombstoneCount() != 2 {
+		t.Fatalf("expected 2 tombstones, got %d", m.TombstoneCount())
+	}
+	if m.RecordCount() != 4 {
+		t.Fatalf("expected 4 total records, got %d", m.RecordCount())
+	}
+
+	// Prune with cutoff 100: should only prune tomb1
+	pruned := m.PruneTombstones(hlc.Timestamp{WallTime: 100, Counter: 0})
+	if pruned != 1 {
+		t.Fatalf("expected 1 pruned tombstone, got %d", pruned)
+	}
+	if m.TombstoneCount() != 1 {
+		t.Fatalf("expected 1 remaining tombstone, got %d", m.TombstoneCount())
+	}
+	if m.Len() != 2 {
+		t.Fatalf("expected active records to remain intact (len 2), got %d", m.Len())
+	}
+
+	// Active record with older timestamp should never be pruned
+	if val, exists := m.Get("active1"); !exists || val != "v1" {
+		t.Fatalf("expected active1 to remain intact, got exists=%v val=%v", exists, val)
+	}
+
+	// Prune with cutoff 300: should prune tomb2
+	pruned2 := m.PruneTombstones(hlc.Timestamp{WallTime: 300, Counter: 0})
+	if pruned2 != 1 {
+		t.Fatalf("expected 1 pruned tombstone, got %d", pruned2)
+	}
+	if m.TombstoneCount() != 0 {
+		t.Fatalf("expected 0 tombstones, got %d", m.TombstoneCount())
+	}
+	if m.Len() != 2 {
+		t.Fatalf("expected active records to remain intact (len 2), got %d", m.Len())
+	}
+}

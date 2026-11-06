@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160" fill="none">
+  <defs>
+    <linearGradient id="glow" x1="36" y1="80" x2="118" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#71717a" stop-opacity="0.3"/>
+      <stop offset="60%" stop-color="#a1a1aa" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="1.0"/>
+    </linearGradient>
+    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Precision Squircle Boundary (Continuous Curvature) -->
+  <path d="M 80 8 
+           C 128 8, 152 32, 152 80 
+           C 152 128, 128 152, 80 152 
+           C 32 152, 8 128, 8 80 
+           C 8 32, 32 8, 80 8 Z" 
+        fill="#09090b" 
+        stroke="#27272a" 
+        stroke-width="1.5" />
+
+  <!-- Technical Axis and Grid Substructure -->
+  <path d="M 28 80 H 132" stroke="#18181b" stroke-width="1" stroke-dasharray="3 3"/>
+  <path d="M 80 28 V 132" stroke="#18181b" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- Convergent Trajectories: Upper, Central, Lower -->
+  <path d="M 38 46 C 72 46, 88 78, 116 80" 
+        stroke="url(#glow)" 
+        stroke-width="2.2" 
+        stroke-linecap="round"/>
+  <path d="M 38 80 H 116" 
+        stroke="url(#glow)" 
+        stroke-width="2.2" 
+        stroke-linecap="round"/>
+  <path d="M 38 114 C 72 114, 88 82, 116 80" 
+        stroke="url(#glow)" 
+        stroke-width="2.2" 
+        stroke-linecap="round"/>
+
+  <!-- Source Replica Nodes (Replicas A, B, C) -->
+  <circle cx="38" cy="46" r="3.5" fill="#18181b" stroke="#71717a" stroke-width="1.5" />
+  <circle cx="38" cy="80" r="3.5" fill="#18181b" stroke="#71717a" stroke-width="1.5" />
+  <circle cx="38" cy="114" r="3.5" fill="#18181b" stroke="#71717a" stroke-width="1.5" />
+
+  <!-- Convergence Terminus (Join Semi-Lattice Optimum) -->
+  <circle cx="118" cy="80" r="7" fill="#ffffff" fill-opacity="0.12" filter="url(#subtleGlow)"/>
+  <circle cx="118" cy="80" r="4.5" fill="#ffffff" stroke="#e4e4e7" stroke-width="1.5" />
+</svg>
+

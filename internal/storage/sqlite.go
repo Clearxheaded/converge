@@ -486,6 +486,34 @@ func (s *Storage) RecordsSince(since hlc.Timestamp) []crdt.Record {
 	return results
 }
 
+// Compact purges tombstones whose timestamp is less than or equal to cutoff.
+// It executes within writeMu and removes the tombstoned rows from both the
+// SQLite records table and the in-memory CRDT map.
+// Active (non-deleted) records are never purged regardless of timestamp.
+// Returns the count of purged tombstones.
+func (s *Storage) Compact(cutoff hlc.Timestamp) (int64, error) {
+	if cutoff.IsZero() {
+		return 0, nil
+	}
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	query := `DELETE FROM records WHERE deleted = 1 AND (wall_time < ? OR (wall_time = ? AND counter <= ?))`
+	res, err := s.db.Exec(query, cutoff.WallTime, cutoff.WallTime, cutoff.Counter)
+	if err != nil {
+		return 0, fmt.Errorf("storage: compact tombstones: %w", err)
+	}
+
+	rowsDeleted, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("storage: rows affected: %w", err)
+	}
+
+	s.memMap.PruneTombstones(cutoff)
+	return rowsDeleted, nil
+}
+
 // LoadRecordsFromDB reads all records directly from the database table.
 func (s *Storage) LoadRecordsFromDB() ([]crdt.Record, error) {
 	rows, err := s.db.Query("SELECT key, value, wall_time, counter, replica_id, deleted FROM records ORDER BY key ASC")

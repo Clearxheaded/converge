@@ -296,6 +296,27 @@ func (m *LWWMap) RecordCount() int {
 	return len(m.records)
 }
 
+// PruneTombstones removes tombstones whose timestamp is less than or equal to cutoff.
+// Active (non-deleted) records are never pruned, regardless of timestamp.
+// Returns the count of purged tombstones.
+func (m *LWWMap) PruneTombstones(cutoff hlc.Timestamp) int {
+	if cutoff.IsZero() {
+		return 0
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	pruned := 0
+	for k, rec := range m.records {
+		if rec.Deleted && !rec.Timestamp.After(cutoff) {
+			delete(m.records, k)
+			pruned++
+		}
+	}
+	return pruned
+}
+
 // Keys returns a sorted slice of active (non-deleted) keys.
 func (m *LWWMap) Keys() []string {
 	m.mu.RLock()
