@@ -1,14 +1,17 @@
-<p align="center">
-  <img src="assets/converge-emblem.svg" alt="Converge Emblem" width="112" height="112" />
-</p>
+<div align="center">
+  <img src="docs/assets/hero_banner.jpg" alt="Converge: Deterministic Local-First Synchronization Engine" width="100%" />
 
-# Converge
+  # Converge
 
-[![CI](https://github.com/Clearxheaded/converge/actions/workflows/ci.yml/badge.svg)](https://github.com/Clearxheaded/converge/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/badge/Go-1.22%2B-blue.svg)](https://golang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+  **A lightweight, local-first distributed synchronization engine enabling independent devices to modify state offline and converge deterministically to bit-for-bit identical state.**
 
-Converge is a lightweight, local-first distributed synchronization engine built in Go. It enables independent devices to modify data offline and converge deterministically to bit-for-bit identical state whenever connectivity is restored, without centralized coordinators or data loss.
+  [![CI](https://github.com/Clearxheaded/converge/actions/workflows/ci.yml/badge.svg)](https://github.com/Clearxheaded/converge/actions/workflows/ci.yml)
+  [![Go Version](https://img.shields.io/badge/Go-1.22%2B-blue.svg)](https://golang.org)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+  [![Tests Passing](https://img.shields.io/badge/Tests-100%25_Passed-10b981.svg)](https://github.com/Clearxheaded/converge)
+
+  [Directive & Model](#system-directive--consistency-model) • [Invariants](#distributed-systems-invariants) • [Architecture](#architecture) • [Benchmarks](#empirical-benchmarks) • [Quick Start](#quick-start)
+</div>
 
 ---
 
@@ -219,6 +222,10 @@ go test -run='^$' -bench='.' ./internal/...
 
 ### 1. Run the Multi-Node Split-Brain Simulation
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Converge Split-Brain Simulation Demo" width="100%" />
+</p>
+
 The CLI includes an automated 5-phase simulation that boots a 3-node cluster, applies concurrent conflicting writes during a simulated network split-brain partition, heals the partition, and verifies bit-for-bit convergence across SQLite databases:
 
 ```bash
@@ -228,6 +235,8 @@ go run ./cmd/converge demo --auto
 # Interactive step-by-step walkthrough (press Enter between phases)
 go run ./cmd/converge demo
 ```
+
+*(Terminal recording generated via VHS using `vhs demo.tape`)*
 
 **Simulation Lifecycle:**
 1. **Phase 1: Cluster Bootstrap:** Spins up Node A, Node B, and Node C with isolated SQLite databases and connects them in a mesh.

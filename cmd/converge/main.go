@@ -50,6 +50,7 @@ func printUsage() {
 	fmt.Println("Demo Options:")
 	fmt.Println("  --auto          Run automatically without prompting between steps")
 	fmt.Println("  --delay <dur>   Delay between steps in auto mode (default: 1200ms)")
+	fmt.Println("  --no-color      Disable ANSI color escape formatting")
 	fmt.Println()
 	fmt.Println("Node Options:")
 	fmt.Println("  --id <string>       Replica identifier (default: node-1)")
@@ -66,24 +67,22 @@ func runDemo(args []string) {
 	fs := flag.NewFlagSet("demo", flag.ExitOnError)
 	autoMode := fs.Bool("auto", false, "Run automatically without interactive pauses")
 	stepDelay := fs.Duration("delay", 1200*time.Millisecond, "Step delay in auto mode")
+	noColor := fs.Bool("no-color", false, "Disable ANSI color formatting")
 	_ = fs.Parse(args)
 
+	ui := NewUI(*noColor)
 	scanner := bufio.NewScanner(os.Stdin)
 	pause := func(stepName string) {
 		if *autoMode {
 			time.Sleep(*stepDelay)
 			return
 		}
-		fmt.Printf("\n[Press Enter to continue: %s] ", stepName)
+		fmt.Printf("\n  %s %s [Press Enter to continue: %s] ", ui.Cyan("▶"), ui.Bold("PAUSED"), ui.Dim(stepName))
 		scanner.Scan()
 		fmt.Println()
 	}
 
-	printBanner("CONVERGE DISTRIBUTED ENGINE DEMO", "=")
-	fmt.Println("This demo shows 3 independent nodes communicating over WebSockets,")
-	fmt.Println("handling concurrent offline writes during a split-brain network partition,")
-	fmt.Println("and deterministically converging to identical state upon network healing.")
-	fmt.Println()
+	ui.Banner("CONVERGE DISTRIBUTED ENGINE DEMO", "Deterministic Local-First Synchronization · 3-Node Cluster Mesh")
 
 	tempDir, err := os.MkdirTemp("", "converge-demo-*")
 	if err != nil {
@@ -101,29 +100,39 @@ func runDemo(args []string) {
 	defer cluster.Close()
 
 	// Phase 1: Cluster Topology Initialization
-	printSection("Phase 1: Cluster Initialization")
-	fmt.Printf("Created 3 independent replicas with isolated SQLite WAL stores in:\n  %s\n", tempDir)
+	ui.PhaseHeader(1, 5, "Cluster Bootstrap & Mesh Topology")
+	ui.CardLine("Initializing 3 independent replicas with isolated SQLite WAL stores in:")
+	ui.CardLine("  %s", ui.Dim(tempDir))
+	ui.CardLine("")
 	for _, id := range nodes {
 		node := cluster.Node(id)
-		fmt.Printf("  - Node [%s] listening on %s (DB: %s.db)\n", id, node.Server.URL, id)
+		colorFn := ui.Cyan
+		if id == "eu-west" {
+			colorFn = ui.Magenta
+		} else if id == "ap-south" {
+			colorFn = ui.Green
+		}
+		ui.Bullet(colorFn, id, "Listen: %s  [DB: %s.db (WAL)]", ui.Dim(node.Server.URL), id)
 	}
 
 	cluster.ConnectAll()
 	time.Sleep(100 * time.Millisecond)
-	fmt.Println("\nConnected all nodes into a full mesh topology.")
+	ui.CardLine("")
+	ui.CardLine("Topology Status: %s", ui.Bold(ui.Green("FULL MESH [3 bidirectional WebSocket links established]")))
+	ui.PhaseEnd()
 
 	pause("Proceed to Online Replication")
 
 	// Phase 2: Online Replication
-	printSection("Phase 2: Real-Time Replication Across Mesh")
-	fmt.Println("1. Node [us-east] writes key 'user:alice' -> '{\"name\": \"Alice\", \"role\": \"admin\"}'")
+	ui.PhaseHeader(2, 5, "Real-Time Mesh Replication")
+	ui.StepAction("us-east", "writes key %s -> %s", ui.Bold("user:alice"), ui.Cyan(`{"name": "Alice", "role": "admin"}`))
 	_, err = cluster.Node("us-east").Store.Set("user:alice", `{"name": "Alice", "role": "admin"}`)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Set failed: %v\n", err)
 		return
 	}
 
-	fmt.Println("2. Node [eu-west] writes key 'config:theme' -> 'dark_mode'")
+	ui.StepAction("eu-west", "writes key %s -> %s", ui.Bold("config:theme"), ui.Cyan("dark_mode"))
 	_, err = cluster.Node("eu-west").Store.Set("config:theme", "dark_mode")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Set failed: %v\n", err)
@@ -133,52 +142,50 @@ func runDemo(args []string) {
 	// Wait for gossip propagation
 	time.Sleep(200 * time.Millisecond)
 
-	fmt.Println("\nState across all nodes after online streaming:")
-	printClusterState(cluster, nodes)
+	ui.CardLine("")
+	ui.CardLine("State across all replicas after live gossip:")
+	printClusterStateTable(ui, cluster, nodes)
+	ui.PhaseEnd()
 
 	pause("Proceed to Split-Brain Network Partition")
 
 	// Phase 3: Split-Brain Network Partition
-	printSection("Phase 3: Network Partition & Split-Brain Writes")
-	fmt.Println("Injecting symmetrical network partition:")
-	fmt.Println("  Partition Island 1: { us-east, eu-west }")
-	fmt.Println("  Partition Island 2: { ap-south } (isolated)")
+	ui.PhaseHeader(3, 5, "Split-Brain Network Partition & Offline Writes")
+	ui.PartitionDiagram([]string{"us-east", "eu-west"}, []string{"ap-south"})
 
 	cluster.Partition([]string{"us-east", "eu-west"}, []string{"ap-south"})
 	time.Sleep(100 * time.Millisecond)
 
-	fmt.Println("\nWriting concurrently to both isolated sides of the partition...")
+	ui.CardLine("Writing concurrently to both isolated sides of the network boundary:")
 
 	// Writes on Partition 1
-	fmt.Println("  [us-east]  sets 'cluster:mode' = 'maintenance'")
+	ui.StepAction("us-east", "sets %s = %s %s", ui.Bold("cluster:mode"), ui.Cyan("'maintenance'"), ui.Dim("(Island A)"))
 	_, _ = cluster.Node("us-east").Store.Set("cluster:mode", "maintenance")
 
-	fmt.Println("  [eu-west]  sets 'service:status' = 'degraded'")
+	ui.StepAction("eu-west", "sets %s = %s %s", ui.Bold("service:status"), ui.Cyan("'degraded'"), ui.Dim("(Island A)"))
 	_, _ = cluster.Node("eu-west").Store.Set("service:status", "degraded")
 
 	// Concurrent conflicting write on Partition 2 (ap-south)
 	time.Sleep(10 * time.Millisecond)
-	fmt.Println("  [ap-south] sets 'cluster:mode' = 'emergency_override' (conflicts with us-east!)")
+	ui.StepAction("ap-south", "sets %s = %s %s", ui.Bold("cluster:mode"), ui.Yellow("'emergency_override'"), ui.Bold(ui.Red("[CONFLICT!]")))
 	_, _ = cluster.Node("ap-south").Store.Set("cluster:mode", "emergency_override")
 
-	fmt.Println("  [ap-south] deletes 'user:alice' (creates a deletion tombstone)")
+	ui.StepAction("ap-south", "deletes %s %s", ui.Bold("user:alice"), ui.Bold(ui.Red("[DURABLE TOMBSTONE]")))
 	_, _, _ = cluster.Node("ap-south").Store.Delete("user:alice")
 
 	time.Sleep(150 * time.Millisecond)
 
-	fmt.Println("\nDivergent states during network partition:")
-	printClusterState(cluster, nodes)
-
-	fmt.Println("Notice:")
-	fmt.Println("  - Island 1 has 'cluster:mode = maintenance' and retains 'user:alice'")
-	fmt.Println("  - Island 2 has 'cluster:mode = emergency_override' and tombstoned 'user:alice'")
-	fmt.Println("  - Island 2 never received 'service:status = degraded'")
+	ui.CardLine("")
+	ui.CardLine("Divergent states across partition boundary:")
+	printClusterStateTable(ui, cluster, nodes)
+	ui.PhaseEnd()
 
 	pause("Proceed to Network Healing and Automatic Convergence")
 
 	// Phase 4: Network Healing & Convergence
-	printSection("Phase 4: Network Healing & Automatic CRDT Convergence")
-	fmt.Println("Healing network partition and restoring full mesh communication...")
+	ui.PhaseHeader(4, 5, "Network Healing & Automatic CRDT Convergence")
+	ui.HealingDiagram()
+
 	cluster.HealAndConnect()
 	cluster.SyncAll()
 
@@ -188,71 +195,77 @@ func runDemo(args []string) {
 		return
 	}
 
-	fmt.Println("All nodes synchronized and converged deterministically!")
-	fmt.Println("\nConverged state across all nodes:")
-	printClusterState(cluster, nodes)
+	ui.CardLine("All replicas synchronized and converged deterministically!")
+	ui.CardLine("Reconciled cluster state:")
+	printClusterStateTable(ui, cluster, nodes)
+	ui.PhaseEnd()
+
+	pause("Proceed to SQLite Disk Storage Verification")
 
 	// Phase 5: Deep Storage Inspection
-	printSection("Phase 5: Direct SQLite Disk Verification")
-	fmt.Println("Inspecting raw records directly from each node's SQLite database file:")
-	for _, id := range nodes {
-		node := cluster.Node(id)
-		records, err := node.Store.LoadRecordsFromDB()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to load db records from %s: %v\n", id, err)
-			continue
-		}
-		fmt.Printf("\n--- Node [%s] SQLite Records (%d total) ---\n", id, len(records))
-		for _, r := range records {
-			status := "ACTIVE"
-			if r.Deleted {
-				status = "TOMBSTONE"
-			}
-			fmt.Printf("  Key: %-15s | Val: %-22s | HLC: %d:%-3d | Replica: %-8s | %s\n",
-				r.Key, r.Value, r.Timestamp.WallTime, r.Timestamp.Counter, r.ReplicaID, status)
-		}
-	}
+	ui.PhaseHeader(5, 5, "Direct SQLite Disk Verification")
+	ui.CardLine("Querying raw records directly from each replica's SQLite database file:")
+	printDiskRecordsTable(ui, cluster, nodes)
+	ui.PhaseEnd()
 
-	printBanner("DEMO COMPLETE - 100% BIT-FOR-BIT CONVERGENCE ACHIEVED", "=")
-	fmt.Println("Key takeaways:")
-	fmt.Println("1. Local mutations commit immediately to SQLite without waiting for network acknowledgements.")
-	fmt.Println("2. Hybrid Logical Clocks preserve causal Lamport ordering across independent machines.")
-	fmt.Println("3. LWW register CRDT rules deterministically resolve concurrent conflicting writes.")
-	fmt.Println("4. Durable tombstones prevent resurrection of deleted items across partition boundaries.")
-	fmt.Println()
+	ui.SummaryBox("BIT-FOR-BIT CONVERGENCE ACHIEVED ACROSS ALL NODES", []string{
+		"Local mutations commit immediately to SQLite WAL without blocking for network acknowledgements.",
+		"Hybrid Logical Clocks preserve strict causal Lamport ordering across independent physical nodes.",
+		"LWW-Element-Set CRDT total ordering deterministically resolves concurrent conflicting edits.",
+		"Durable tombstones prevent resurrection of deleted items across network partitions.",
+	})
 }
 
-func printClusterState(c *simulation.Cluster, nodeIDs []string) {
+func printClusterStateTable(u *UI, c *simulation.Cluster, nodeIDs []string) {
+	headers := []string{"REPLICA", "ACTIVE KEYS", "SQLITE COMMITTED STATE"}
+	rows := make([][]string, 0, len(nodeIDs))
+
 	for _, id := range nodeIDs {
 		node := c.Node(id)
 		values := node.Store.Values()
-		fmt.Printf("  Node [%-8s] Active keys (%d): ", id, len(values))
-		if len(values) == 0 {
-			fmt.Println("(empty)")
-			continue
-		}
 		pairs := make([]string, 0, len(values))
 		for k, v := range values {
 			pairs = append(pairs, fmt.Sprintf("%s=%q", k, v))
 		}
-		fmt.Println(strings.Join(pairs, ", "))
+		valStr := strings.Join(pairs, ", ")
+		if len(pairs) == 0 {
+			valStr = u.Dim("(empty)")
+		}
+		rows = append(rows, []string{
+			u.Bold(id),
+			fmt.Sprintf("%d keys", len(values)),
+			valStr,
+		})
 	}
+	u.Table(headers, rows)
 }
 
-func printBanner(title, borderChar string) {
-	width := 72
-	border := strings.Repeat(borderChar, width)
-	fmt.Println(border)
-	pad := (width - len(title) - 2) / 2
-	if pad < 0 {
-		pad = 0
-	}
-	fmt.Printf("%s %s\n", strings.Repeat(" ", pad), title)
-	fmt.Println(border)
-}
+func printDiskRecordsTable(u *UI, c *simulation.Cluster, nodeIDs []string) {
+	headers := []string{"REPLICA", "KEY", "VALUE", "HLC TIMESTAMP", "ORIGIN", "STATUS"}
+	var rows [][]string
 
-func printSection(title string) {
-	fmt.Printf("\n=== %s ===\n\n", title)
+	for _, id := range nodeIDs {
+		node := c.Node(id)
+		records, err := node.Store.LoadRecordsFromDB()
+		if err != nil {
+			continue
+		}
+		for _, r := range records {
+			status := u.Green("● ACTIVE")
+			if r.Deleted {
+				status = u.Red("⚰ TOMBSTONE")
+			}
+			rows = append(rows, []string{
+				u.Bold(id),
+				r.Key,
+				r.Value,
+				fmt.Sprintf("%d:%d", r.Timestamp.WallTime, r.Timestamp.Counter),
+				r.ReplicaID,
+				status,
+			})
+		}
+	}
+	u.Table(headers, rows)
 }
 
 // -----------------------------------------------------------------------------
@@ -301,12 +314,8 @@ func runNode(args []string) {
 	}()
 	defer httpServer.Close()
 
-	printBanner(fmt.Sprintf("CONVERGE NODE: %s", *replicaID), "=")
-	fmt.Printf("Database: %s\n", *dbPath)
-	fmt.Printf("Listening: %s\n", *listenAddr)
-	fmt.Printf("HLC WallTime: %d ms\n", clock.Now().WallTime)
-	fmt.Println("Type 'help' for available commands or 'exit' to quit.")
-	fmt.Println()
+	ui := NewUI(false)
+	ui.Banner(fmt.Sprintf("CONVERGE REPLICA: %s", *replicaID), fmt.Sprintf("Listening on %s · SQLite WAL: %s", *listenAddr, *dbPath))
 
 	// Connect to initial peers if provided
 	if *peersList != "" {
@@ -343,13 +352,13 @@ func runNode(args []string) {
 		os.Exit(0)
 	}()
 
-	runRepl(store, mgr, clock)
+	runRepl(store, mgr, clock, ui)
 }
 
-func runRepl(store *storage.Storage, mgr *csync.SyncManager, clock *hlc.Clock) {
+func runRepl(store *storage.Storage, mgr *csync.SyncManager, clock *hlc.Clock, ui *UI) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
-		fmt.Print("> ")
+		fmt.Print(ui.Cyan("> "))
 		if !scanner.Scan() {
 			break
 		}
@@ -384,9 +393,9 @@ func runRepl(store *storage.Storage, mgr *csync.SyncManager, clock *hlc.Clock) {
 			val := parts[2]
 			rec, err := store.Set(key, val)
 			if err != nil {
-				fmt.Printf("Error: %v\n", err)
+				fmt.Printf("%s: %v\n", ui.Red("Error"), err)
 			} else {
-				fmt.Printf("OK (HLC: %d:%d)\n", rec.Timestamp.WallTime, rec.Timestamp.Counter)
+				fmt.Printf("%s (HLC: %s)\n", ui.Green("OK"), ui.Cyan(fmt.Sprintf("%d:%d", rec.Timestamp.WallTime, rec.Timestamp.Counter)))
 			}
 
 		case "get":
@@ -397,9 +406,9 @@ func runRepl(store *storage.Storage, mgr *csync.SyncManager, clock *hlc.Clock) {
 			key := parts[1]
 			val, ok := store.Get(key)
 			if !ok {
-				fmt.Println("(nil - key not found or deleted)")
+				fmt.Println(ui.Dim("(nil - key not found or deleted)"))
 			} else {
-				fmt.Printf("%s\n", val)
+				fmt.Println(val)
 			}
 
 		case "delete", "del":
@@ -410,53 +419,76 @@ func runRepl(store *storage.Storage, mgr *csync.SyncManager, clock *hlc.Clock) {
 			key := parts[1]
 			rec, wasActive, err := store.Delete(key)
 			if err != nil {
-				fmt.Printf("Error: %v\n", err)
+				fmt.Printf("%s: %v\n", ui.Red("Error"), err)
 			} else {
-				fmt.Printf("OK (Tombstoned at HLC: %d:%d, wasActive: %v)\n", rec.Timestamp.WallTime, rec.Timestamp.Counter, wasActive)
+				fmt.Printf("%s (Tombstoned at HLC: %s, wasActive: %v)\n",
+					ui.Yellow("OK"),
+					ui.Cyan(fmt.Sprintf("%d:%d", rec.Timestamp.WallTime, rec.Timestamp.Counter)),
+					wasActive,
+				)
 			}
 
 		case "list":
 			values := store.Values()
 			if len(values) == 0 {
-				fmt.Println("(no active keys)")
+				fmt.Println(ui.Dim("(no active keys)"))
 				continue
 			}
+			headers := []string{"KEY", "COMMITTED VALUE"}
+			var rows [][]string
 			for k, v := range values {
-				fmt.Printf("  %-20s = %s\n", k, v)
+				rows = append(rows, []string{k, v})
 			}
+			ui.Table(headers, rows)
 
 		case "dump":
 			records, err := store.LoadRecordsFromDB()
 			if err != nil {
-				fmt.Printf("Error reading database: %v\n", err)
+				fmt.Printf("%s reading database: %v\n", ui.Red("Error"), err)
 				continue
 			}
 			if len(records) == 0 {
-				fmt.Println("(empty database)")
+				fmt.Println(ui.Dim("(empty database)"))
 				continue
 			}
-			fmt.Printf("Total records in SQLite: %d\n", len(records))
+			headers := []string{"KEY", "VALUE", "HLC TIMESTAMP", "REPLICA", "STATUS"}
+			var rows [][]string
 			for _, r := range records {
-				status := "ACTIVE"
+				status := ui.Green("● ACTIVE")
 				if r.Deleted {
-					status = "TOMBSTONE"
+					status = ui.Red("⚰ TOMBSTONE")
 				}
-				fmt.Printf("  Key: %-15s | Val: %-20s | HLC: %d:%-3d | Replica: %-8s | %s\n",
-					r.Key, r.Value, r.Timestamp.WallTime, r.Timestamp.Counter, r.ReplicaID, status)
+				rows = append(rows, []string{
+					r.Key,
+					r.Value,
+					fmt.Sprintf("%d:%d", r.Timestamp.WallTime, r.Timestamp.Counter),
+					r.ReplicaID,
+					status,
+				})
 			}
+			ui.Table(headers, rows)
 
 		case "peers":
 			peers := mgr.Peers()
 			if len(peers) == 0 {
-				fmt.Println("No connected peers.")
+				fmt.Println(ui.Dim("No connected peers."))
 				continue
 			}
-			fmt.Printf("Connected peers (%d):\n", len(peers))
+			headers := []string{"PEER ID", "HLC WATERMARK", "DIRECTION"}
+			var rows [][]string
 			for _, p := range peers {
 				wm := mgr.GetWatermark(p.RemoteID())
-				fmt.Printf("  - %-12s (Watermark: %d:%d, Inbound: %v)\n",
-					p.RemoteID(), wm.WallTime, wm.Counter, !p.IsOutbound())
+				dir := ui.Cyan("Inbound")
+				if p.IsOutbound() {
+					dir = ui.Magenta("Outbound")
+				}
+				rows = append(rows, []string{
+					ui.Bold(p.RemoteID()),
+					fmt.Sprintf("%d:%d", wm.WallTime, wm.Counter),
+					dir,
+				})
 			}
+			ui.Table(headers, rows)
 
 		case "connect":
 			if len(parts) < 2 {
