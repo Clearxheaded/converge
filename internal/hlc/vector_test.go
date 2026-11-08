@@ -111,4 +111,3 @@ func TestVectorClock_ConcurrentStress(t *testing.T) {
 		t.Fatalf("expected %d tracked replicas, got %d", len(nodes), vc.Len())
 	}
 }
-

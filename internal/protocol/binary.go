@@ -306,4 +306,3 @@ func readBinaryRecords(data []byte, offset int, count int) ([]crdt.Record, error
 	}
 	return records, nil
 }
-

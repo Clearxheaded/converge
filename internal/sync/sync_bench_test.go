@@ -88,52 +88,57 @@ func BenchmarkSync_CatchUpSync_500(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		b.StopTimer()
+		func() {
+			b.StopTimer()
 
-		// Prepare node A with 500 records
-		storeA, mgrA, srvA := createBenchNode(b, fmt.Sprintf("node-a-%d", i))
-		for j := 0; j < 500; j++ {
-			_, _ = storeA.Set(fmt.Sprintf("seed_key_%d", j), "seed_value")
-		}
+			// Prepare node A with 500 records
+			storeA, mgrA, srvA := createBenchNode(b, fmt.Sprintf("node-a-%d", i))
+			defer func() {
+				_ = mgrA.Close()
+				srvA.Close()
+				_ = storeA.Close()
+			}()
 
-		// Prepare fresh node B
-		storeB, mgrB, srvB := createBenchNode(b, fmt.Sprintf("node-b-%d", i))
-
-		wsURL := "ws" + strings.TrimPrefix(srvB.URL, "http")
-
-		b.StartTimer()
-
-		peer, err := mgrA.Connect(wsURL)
-		if err != nil {
-			b.Fatalf("connect: %v", err)
-		}
-		if err := peer.WaitHandshake(2 * time.Second); err != nil {
-			b.Fatalf("handshake: %v", err)
-		}
-
-		// Wait until node B synchronizes all 500 records
-		waitDeadline := time.Now().Add(5 * time.Second)
-		converged := false
-		for time.Now().Before(waitDeadline) {
-			if storeB.Len() >= 500 {
-				converged = true
-				break
+			for j := 0; j < 500; j++ {
+				_, _ = storeA.Set(fmt.Sprintf("seed_key_%d", j), "seed_value")
 			}
-			time.Sleep(5 * time.Millisecond)
-		}
 
-		b.StopTimer()
+			// Prepare fresh node B
+			storeB, mgrB, srvB := createBenchNode(b, fmt.Sprintf("node-b-%d", i))
+			defer func() {
+				_ = mgrB.Close()
+				srvB.Close()
+				_ = storeB.Close()
+			}()
 
-		if !converged {
-			b.Fatalf("catch-up sync timed out: storeB has %d/500 records", storeB.Len())
-		}
+			wsURL := "ws" + strings.TrimPrefix(srvB.URL, "http")
 
-		_ = mgrA.Close()
-		srvA.Close()
-		_ = storeA.Close()
+			b.StartTimer()
 
-		_ = mgrB.Close()
-		srvB.Close()
-		_ = storeB.Close()
+			peer, err := mgrA.Connect(wsURL)
+			if err != nil {
+				b.Fatalf("connect: %v", err)
+			}
+			if err := peer.WaitHandshake(2 * time.Second); err != nil {
+				b.Fatalf("handshake: %v", err)
+			}
+
+			// Wait until node B synchronizes all 500 records
+			waitDeadline := time.Now().Add(5 * time.Second)
+			converged := false
+			for time.Now().Before(waitDeadline) {
+				if storeB.Len() >= 500 {
+					converged = true
+					break
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+
+			b.StopTimer()
+
+			if !converged {
+				b.Fatalf("catch-up sync timed out: storeB has %d/500 records", storeB.Len())
+			}
+		}()
 	}
 }

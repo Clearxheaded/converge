@@ -134,4 +134,3 @@ func BenchmarkSerialization_Decode_Binary_1000(b *testing.B) {
 		_, _ = protocol.DecodeBinary(data)
 	}
 }
-

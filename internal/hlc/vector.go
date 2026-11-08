@@ -145,4 +145,3 @@ func (vc *VectorClock) StableWatermark(requiredReplicas []string) Timestamp {
 	}
 	return minTS
 }
-

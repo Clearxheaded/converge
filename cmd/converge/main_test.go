@@ -42,4 +42,3 @@ func TestCLI_RunDemoAuto(t *testing.T) {
 		t.Fatal("demo timed out")
 	}
 }
-
